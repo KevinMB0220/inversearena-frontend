@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol,
+    Address, BytesN, Env, Symbol, contract, contracterror, contractimpl, contracttype, symbol_short,
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ pub enum ArenaError {
     RoundStillOpen = 7,
     RoundDeadlineOverflow = 8,
     NotInitialized = 9,
+    InvalidAmount = 10,
 }
 
 #[contracttype]
@@ -73,6 +74,7 @@ enum DataKey {
     Config,
     Round,
     Submission(u32, Address),
+    Joined(Address),
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
@@ -174,6 +176,23 @@ impl ArenaContract {
         Ok(next_round)
     }
 
+    pub fn join(env: Env, player: Address, amount: i128) -> Result<(), ArenaError> {
+        env.storage()
+            .instance()
+            .extend_ttl(GAME_TTL_THRESHOLD, GAME_TTL_EXTEND_TO);
+
+        player.require_auth();
+
+        if amount <= 0 {
+            return Err(ArenaError::InvalidAmount);
+        }
+
+        storage(&env).set(&DataKey::Joined(player.clone()), &amount);
+        bump(&env, &DataKey::Joined(player));
+
+        Ok(())
+    }
+
     pub fn submit_choice(env: Env, player: Address, choice: Choice) -> Result<(), ArenaError> {
         env.storage()
             .instance()
@@ -261,10 +280,8 @@ impl ArenaContract {
             .instance()
             .set(&EXECUTE_AFTER_KEY, &execute_after);
 
-        env.events().publish(
-            (TOPIC_UPGRADE_PROPOSED,),
-            (new_wasm_hash, execute_after),
-        );
+        env.events()
+            .publish((TOPIC_UPGRADE_PROPOSED,), (new_wasm_hash, execute_after));
     }
 
     /// Execute a previously proposed upgrade after the 48-hour timelock.
@@ -301,8 +318,7 @@ impl ArenaContract {
         env.events()
             .publish((TOPIC_UPGRADE_EXECUTED,), new_wasm_hash.clone());
 
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash);
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     /// Cancel a pending upgrade proposal. Admin-only.

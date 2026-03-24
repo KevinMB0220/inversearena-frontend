@@ -1,8 +1,8 @@
 #[cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
     Address, BytesN, Env,
+    testutils::{Address as _, Ledger},
 };
 
 const TIMELOCK: u64 = 48 * 60 * 60; // 48 hours
@@ -157,4 +157,40 @@ fn test_pending_upgrade_none_after_cancel() {
     client.propose_upgrade(&dummy_hash(&env));
     client.cancel_upgrade();
     assert!(client.pending_upgrade().is_none());
+}
+
+use crate::Error;
+use soroban_sdk::testutils::Address as TestAddress;
+
+#[test]
+fn test_create_pool_validations() {
+    let (env, admin, client) = setup();
+    let token = Address::generate(&env);
+    let unsupported_token = Address::generate(&env);
+
+    // Admin adds supported token
+    client.add_supported_token(&token);
+
+    // amount <= 0 reverts
+    let res = client.try_create_pool(&0, &token, &30, &10);
+    assert_eq!(res, Err(Ok(Error::InvalidStakeForPool)));
+
+    let res = client.try_create_pool(&-100, &token, &30, &10);
+    assert_eq!(res, Err(Ok(Error::InvalidStakeForPool)));
+
+    // capacity < 2 reverts
+    let res = client.try_create_pool(&1000, &token, &30, &1);
+    assert_eq!(res, Err(Ok(Error::InvalidInput)));
+
+    // capacity > 1000 reverts
+    let res = client.try_create_pool(&1000, &token, &30, &1001);
+    assert_eq!(res, Err(Ok(Error::InvalidInput)));
+
+    // unsupported token reverts
+    let res = client.try_create_pool(&1000, &unsupported_token, &30, &10);
+    assert_eq!(res, Err(Ok(Error::UnsupportedToken)));
+
+    // valid inputs succeed
+    let res = client.try_create_pool(&1000, &token, &30, &10);
+    assert!(res.is_ok());
 }

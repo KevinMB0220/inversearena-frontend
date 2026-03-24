@@ -2,8 +2,8 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _, LedgerInfo},
     Address, BytesN, Env,
+    testutils::{Address as _, Ledger as _, LedgerInfo},
 };
 
 // ── Ledger helpers ────────────────────────────────────────────────────────────
@@ -657,4 +657,25 @@ fn partial_submissions_preserved_after_timeout() {
     assert_eq!(client.get_choice(&1, &player_a), Some(Choice::Heads));
     assert_eq!(client.get_choice(&1, &player_b), Some(Choice::Tails));
     assert_eq!(client.get_choice(&1, &player_c), None); // absent
+}
+
+#[test]
+fn test_join_validates_amount() {
+    let (env, _admin, client) = setup_with_admin();
+    client.init(&5);
+
+    let player = Address::generate(&env);
+
+    // Test negative amount
+    env.mock_all_auths();
+    let res = client.try_join(&player, &-10);
+    assert_eq!(res, Err(Ok(ArenaError::InvalidAmount)));
+
+    // Test zero amount
+    let res = client.try_join(&player, &0);
+    assert_eq!(res, Err(Ok(ArenaError::InvalidAmount)));
+
+    // Test positive amount
+    let res = client.try_join(&player, &100);
+    assert!(res.is_ok());
 }

@@ -1,12 +1,20 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol};
+use soroban_sdk::{
+    Address, BytesN, Env, Symbol, contract, contractimpl, contracttype, contracterror, symbol_short,
+};
 
 // ── Storage keys ─────────────────────────────────────────────────────────────
 
 const ADMIN_KEY: Symbol = symbol_short!("ADMIN");
 const PENDING_HASH_KEY: Symbol = symbol_short!("P_HASH");
 const EXECUTE_AFTER_KEY: Symbol = symbol_short!("P_AFTER");
+
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    SupportedToken(Address),
+}
 
 // ── Timelock constant: 48 hours in seconds ────────────────────────────────────
 
@@ -20,7 +28,7 @@ const TOPIC_UPGRADE_CANCELLED: Symbol = symbol_short!("UP_CANC");
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u32)]
 pub enum Error {
@@ -29,6 +37,9 @@ pub enum Error {
     Unauthorized = 3,
     NoPendingUpgrade = 4,
     TimelockNotExpired = 5,
+    InvalidInput = 10,
+    InvalidStakeForPool = 100,
+    UnsupportedToken = 101,
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
@@ -55,6 +66,44 @@ impl FactoryContract {
             .expect("not initialized")
     }
 
+    pub fn add_supported_token(env: Env, token: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN_KEY)
+            .expect("not initialized");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::SupportedToken(token), &true);
+    }
+
+    pub fn create_pool(
+        env: Env,
+        amount: i128,
+        currency: Address,
+        _round_speed: u32,
+        capacity: u32,
+    ) -> Result<Address, Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidStakeForPool);
+        }
+        if capacity < 2 || capacity > 1000 {
+            return Err(Error::InvalidInput);
+        }
+        let supported: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SupportedToken(currency))
+            .unwrap_or(false);
+        if !supported {
+            return Err(Error::UnsupportedToken);
+        }
+
+        // Dummy logic to return the factory address as the "pool" address since actual pool deployment isn't defined here.
+        Ok(env.current_contract_address())
+    }
+
     // ── Upgrade mechanism ────────────────────────────────────────────────────
 
     /// Propose a WASM upgrade. The new hash is stored together with the
@@ -76,10 +125,8 @@ impl FactoryContract {
             .instance()
             .set(&EXECUTE_AFTER_KEY, &execute_after);
 
-        env.events().publish(
-            (TOPIC_UPGRADE_PROPOSED,),
-            (new_wasm_hash, execute_after),
-        );
+        env.events()
+            .publish((TOPIC_UPGRADE_PROPOSED,), (new_wasm_hash, execute_after));
     }
 
     /// Execute a previously proposed upgrade after the 48-hour timelock.
@@ -116,8 +163,7 @@ impl FactoryContract {
         env.events()
             .publish((TOPIC_UPGRADE_EXECUTED,), new_wasm_hash.clone());
 
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash);
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     /// Cancel a pending upgrade proposal. Admin-only.
