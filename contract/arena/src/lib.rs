@@ -146,7 +146,7 @@ impl ArenaContract {
         if storage(&env).has(&DataKey::Config) {
             return Err(ArenaError::AlreadyInitialized);
         }
-        if round_speed_in_ledgers == 0 {
+        if round_speed_in_ledgers == 0 || round_speed_in_ledgers > bounds::MAX_SPEED_LEDGERS {
             return Err(ArenaError::InvalidRoundSpeed);
         }
         env.storage()
@@ -285,7 +285,11 @@ impl ArenaContract {
         if count >= effective_cap {
             return Err(ArenaError::ArenaFull);
         }
-        let token: Option<Address> = env.storage().instance().get(&TOKEN_KEY);
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&TOKEN_KEY)
+            .ok_or(ArenaError::TokenNotSet)?;
         // CEI: effects before interaction
         storage(&env).set(&survivor_key, &());
         bump(&env, &survivor_key);
@@ -300,14 +304,11 @@ impl ArenaContract {
         env.storage()
             .instance()
             .set(&PRIZE_POOL_KEY, &(pool + amount));
-        // Only pull tokens if a token contract is configured
-        if let Some(token_addr) = token {
-            token::Client::new(&env, &token_addr).transfer(
-                &player,
-                &env.current_contract_address(),
-                &amount,
-            );
-        }
+        token::Client::new(&env, &token).transfer(
+            &player,
+            &env.current_contract_address(),
+            &amount,
+        );
         Ok(())
     }
 
@@ -405,13 +406,13 @@ impl ArenaContract {
         {
             return Err(ArenaError::ReentrancyGuard);
         }
-        let prize: i128 = env.storage().instance().get(&PRIZE_POOL_KEY).unwrap_or(0);
-        if prize <= 0 {
-            return Err(ArenaError::NoPrizeToClaim);
-        }
         let prize_key = DataKey::PrizeClaimed(winner.clone());
         if storage(&env).has(&prize_key) {
             return Err(ArenaError::AlreadyClaimed);
+        }
+        let prize: i128 = env.storage().instance().get(&PRIZE_POOL_KEY).unwrap_or(0);
+        if prize <= 0 {
+            return Err(ArenaError::NoPrizeToClaim);
         }
         let token: Address = env
             .storage()
@@ -425,6 +426,12 @@ impl ArenaContract {
         env.storage().instance().set(&PRIZE_POOL_KEY, &0i128);
         token::Client::new(&env, &token).transfer(&env.current_contract_address(), &winner, &prize);
         env.storage().instance().set(&GAME_STATUS_KEY, &false);
+        // Mark round as finished after prize is claimed
+        if let Some(mut round) = storage(&env).get::<_, RoundState>(&DataKey::Round) {
+            round.finished = true;
+            storage(&env).set(&DataKey::Round, &round);
+            bump(&env, &DataKey::Round);
+        }
         env.events()
             .publish((TOPIC_CLAIM,), (winner, prize, EVENT_VERSION));
         Ok(prize)

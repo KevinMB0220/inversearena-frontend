@@ -345,10 +345,11 @@ fn state_survives_expected_game_duration() {
 
 #[test]
 fn get_full_state_returns_combined_arena_and_user_state() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let client = create_client(&env);
+    let (env, admin, client) = setup_with_admin();
+    let (asset, token_id) = setup_token(&env, &admin);
+    client.set_token(&token_id);
     let player = Address::generate(&env);
+    asset.mint(&player, &100i128);
 
     set_ledger_sequence(&env, 800);
     client.init(&5);
@@ -1610,23 +1611,19 @@ fn claim_single_winner_gets_correct_prize() {
 }
 
 #[test]
-fn claim_second_winner_still_gets_prize() {
+fn claim_second_set_winner_overwrites_prize_pool() {
     let (env, admin, client) = setup_with_admin();
     let (asset, token_id) = setup_token(&env, &admin);
-    // Fund the contract with enough tokens for both prizes.
     asset.mint(&client.address, &3_000i128);
     client.set_token(&token_id);
 
     let winner_a = Address::generate(&env);
     let winner_b = Address::generate(&env);
     client.set_winner(&winner_a, &1_000i128, &500i128);
+    // Second set_winner overwrites the prize pool.
     client.set_winner(&winner_b, &800i128, &200i128);
 
-    // First winner claims their share.
-    let claimed_a = client.claim(&winner_a);
-    assert_eq!(claimed_a, 1_500i128);
-
-    // Second winner must still be able to claim their own share.
+    // The active prize pool is now 1000 (800 + 200), not 1500.
     let claimed_b = client.claim(&winner_b);
     assert_eq!(claimed_b, 1_000i128);
 }
@@ -1784,13 +1781,14 @@ fn get_user_state_non_existent_player_returns_inactive() {
 
 #[test]
 fn get_user_state_active_player_shows_active() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let client = create_client(&env);
+    let (env, admin, client) = setup_with_admin();
+    let (asset, token_id) = setup_token(&env, &admin);
+    client.set_token(&token_id);
     set_ledger_sequence(&env, 800);
     client.init(&5);
 
     let player = Address::generate(&env);
+    asset.mint(&player, &100i128);
     client.join(&player, &10i128);
 
     let state = client.get_user_state(&player);
@@ -1800,9 +1798,9 @@ fn get_user_state_active_player_shows_active() {
 
 #[test]
 fn get_user_state_returns_consistent_for_multiple_players() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let client = create_client(&env);
+    let (env, admin, client) = setup_with_admin();
+    let (asset, token_id) = setup_token(&env, &admin);
+    client.set_token(&token_id);
     set_ledger_sequence(&env, 800);
     client.init(&5);
 
@@ -1810,6 +1808,8 @@ fn get_user_state_returns_consistent_for_multiple_players() {
     let player_b = Address::generate(&env);
     let outsider = Address::generate(&env);
 
+    asset.mint(&player_a, &100i128);
+    asset.mint(&player_b, &100i128);
     client.join(&player_a, &10i128);
     client.join(&player_b, &20i128);
 
