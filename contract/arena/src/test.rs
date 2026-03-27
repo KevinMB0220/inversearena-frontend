@@ -1447,6 +1447,28 @@ fn test_cancel_upgrade_after_paused_propose() {
     assert!(client.pending_upgrade().is_none());
 }
 
+/// When paused, admin token rotation still succeeds.
+#[test]
+fn test_set_token_succeeds_when_paused() {
+    let (env, admin, client) = setup_with_admin();
+    let (_old_asset, old_token_id) = setup_token(&env, &admin);
+    let (_new_asset, new_token_id) = setup_token(&env, &admin);
+
+    client.set_token(&old_token_id);
+    client.pause();
+    assert!(client.is_paused());
+
+    client.set_token(&new_token_id);
+
+    let configured_token: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&TOKEN_KEY)
+            .expect("token must remain configurable while paused")
+    });
+    assert_eq!(configured_token, new_token_id);
+}
+
 /// When paused, normal game functions are blocked but governance functions are not.
 /// This is the core invariant of the Emergency Pause Policy.
 #[test]
@@ -1488,6 +1510,18 @@ fn test_paused_blocks_game_functions_not_governance() {
         client.pending_upgrade().is_none(),
         "cancel_upgrade must succeed when paused"
     );
+
+    let (_old_asset, old_token_id) = setup_token(&env, &_admin);
+    let (_new_asset, new_token_id) = setup_token(&env, &_admin);
+    client.set_token(&old_token_id);
+    client.set_token(&new_token_id);
+    let configured_token: Address = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&TOKEN_KEY)
+            .expect("set_token must succeed when paused")
+    });
+    assert_eq!(configured_token, new_token_id);
 }
 
 /// After unpausing, all functions — game and governance — work normally.

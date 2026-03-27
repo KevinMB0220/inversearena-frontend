@@ -229,7 +229,8 @@ impl ArenaContract {
     }
 
     pub fn set_token(env: Env, token: Address) {
-        require_not_paused(&env).unwrap();
+        // Admin configuration remains available during an emergency pause so the
+        // token can be rotated before gameplay resumes.
         let admin: Address = env
             .storage()
             .instance()
