@@ -16,9 +16,7 @@ const EXECUTE_AFTER_KEY: Symbol = symbol_short!("P_AFTER");
 const WHITELIST_PREFIX: Symbol = symbol_short!("WL");
 const MIN_STAKE_KEY: Symbol = symbol_short!("MIN_STK");
 const ARENA_WASM_HASH_KEY: Symbol = symbol_short!("AR_WASM");
-const POOL_PREFIX: Symbol = symbol_short!("POOL");
-const ALL_POOLS_KEY: Symbol = symbol_short!("ALL_P");
-const METADATA_PREFIX: Symbol = symbol_short!("META");
+const POOL_COUNT_KEY: Symbol = symbol_short!("P_CNT");
 const SCHEMA_VERSION_KEY: Symbol = symbol_short!("S_VER");
 
 /// Current schema version. Bump this when storage layout changes.
@@ -41,6 +39,7 @@ const MAX_POOL_CAPACITY: u32 = 256;
 #[derive(Clone)]
 pub enum DataKey {
     SupportedToken(Address),
+    Pool(u32),
 }
 
 // ── Timelock constant: 48 hours in seconds ────────────────────────────────────
@@ -330,12 +329,11 @@ impl FactoryContract {
             .get(&ARENA_WASM_HASH_KEY)
             .ok_or(Error::WasmHashNotSet)?;
 
-        let mut all_pools: soroban_sdk::Vec<u32> = env
+        let pool_id: u32 = env
             .storage()
             .instance()
-            .get(&ALL_POOLS_KEY)
-            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
-        let pool_id = all_pools.len();
+            .get(&POOL_COUNT_KEY)
+            .unwrap_or(0u32);
 
         let metadata = ArenaMetadata {
             pool_id,
@@ -343,8 +341,9 @@ impl FactoryContract {
             capacity,
             stake_amount: stake,
         };
-        let meta_key = (METADATA_PREFIX, pool_id);
-        env.storage().instance().set(&meta_key, &metadata);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Pool(pool_id), &metadata);
 
         // ── Deployment ──────────────────────────────────────────────────────────
 
@@ -395,9 +394,10 @@ impl FactoryContract {
             soroban_sdk::vec![&env, caller.into_val(&env)],
         );
 
-        // Register pool.
-        all_pools.push_back(pool_id);
-        env.storage().instance().set(&ALL_POOLS_KEY, &all_pools);
+        // Increment the pool counter.
+        env.storage()
+            .instance()
+            .set(&POOL_COUNT_KEY, &(pool_id + 1));
 
         env.events().publish(
             (TOPIC_POOL_CREATED,),
@@ -563,27 +563,23 @@ impl FactoryContract {
 
     /// Get metadata for a specific pool.
     pub fn get_arena(env: Env, pool_id: u32) -> Option<ArenaMetadata> {
-        let key = (METADATA_PREFIX, pool_id);
-        env.storage().instance().get(&key)
+        env.storage().persistent().get(&DataKey::Pool(pool_id))
     }
 
     /// Get a paginated list of arena metadata.
     pub fn get_arenas(env: Env, offset: u32, limit: u32) -> soroban_sdk::Vec<ArenaMetadata> {
-        let all_pools: soroban_sdk::Vec<u32> = env
+        let pool_count: u32 = env
             .storage()
             .instance()
-            .get(&ALL_POOLS_KEY)
-            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+            .get(&POOL_COUNT_KEY)
+            .unwrap_or(0u32);
 
         let mut results = soroban_sdk::Vec::new(&env);
-        let start = offset;
-        let end = core::cmp::min(offset + limit, all_pools.len());
+        let end = core::cmp::min(offset + limit, pool_count);
 
-        for i in start..end {
-            if let Some(pool_id) = all_pools.get(i) {
-                if let Some(meta) = Self::get_arena(env.clone(), pool_id) {
-                    results.push_back(meta);
-                }
+        for i in offset..end {
+            if let Some(meta) = Self::get_arena(env.clone(), i) {
+                results.push_back(meta);
             }
         }
         results

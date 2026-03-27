@@ -40,6 +40,9 @@ fn arena_error_codes_match_abi_snapshot() {
         ("PlayerEliminated", ArenaError::PlayerEliminated),
         ("WrongRoundNumber", ArenaError::WrongRoundNumber),
         ("NotEnoughPlayers", ArenaError::NotEnoughPlayers),
+        ("InvalidCapacity", ArenaError::InvalidCapacity),
+        ("NoPendingUpgrade", ArenaError::NoPendingUpgrade),
+        ("TimelockNotExpired", ArenaError::TimelockNotExpired),
     ];
 
     assert_eq!(

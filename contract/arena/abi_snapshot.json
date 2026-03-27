@@ -24,7 +24,10 @@
     "MaxSubmissionsPerRound": 20,
     "PlayerEliminated": 21,
     "WrongRoundNumber": 22,
-    "NotEnoughPlayers": 23
+    "NotEnoughPlayers": 23,
+    "InvalidCapacity": 24,
+    "NoPendingUpgrade": 25,
+    "TimelockNotExpired": 26
   },
   "event_topics": [
     "UP_PROP",

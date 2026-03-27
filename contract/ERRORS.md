@@ -97,6 +97,12 @@ The arena pool contract uses `#[contracterror]` with **explicit** `repr(u32)` va
 | 18 | `GameAlreadyFinished` | Game ended |
 | 19 | `TokenNotSet` | Token not configured |
 | 20 | `MaxSubmissionsPerRound` | Per-round submission bound (`contract/BOUNDS.md`) |
+| 21 | `PlayerEliminated` | Eliminated player attempted action |
+| 22 | `WrongRoundNumber` | Submitted for wrong round |
+| 23 | `NotEnoughPlayers` | Too few players to start/resolve round |
+| 24 | `InvalidCapacity` | `set_capacity` value out of `[MIN, MAX]` range |
+| 25 | `NoPendingUpgrade` | `execute_upgrade`/`cancel_upgrade` with no proposal |
+| 26 | `TimelockNotExpired` | `execute_upgrade` called before 48-hour timelock |
 
 **ABI snapshot:** `contract/arena/abi_snapshot.json` guards these ordinals in CI (`abi_guard` tests).
 

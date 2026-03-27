@@ -442,40 +442,48 @@ fn test_propose_upgrade_replaces_previous() {
 }
 
 #[test]
-#[should_panic(expected = "no pending upgrade")]
-fn test_execute_without_proposal_panics() {
+fn test_execute_without_proposal_returns_error() {
     let (_env, _admin, client) = setup_with_admin();
-    client.execute_upgrade();
+    assert_eq!(
+        client.try_execute_upgrade(),
+        Err(Ok(ArenaError::NoPendingUpgrade))
+    );
 }
 
 #[test]
-#[should_panic(expected = "timelock has not expired")]
-fn test_execute_before_timelock_panics() {
+fn test_execute_before_timelock_returns_error() {
     let (env, _admin, client) = setup_with_admin();
     client.propose_upgrade(&dummy_hash(&env));
     env.ledger().with_mut(|l| {
         l.timestamp += 47 * 60 * 60;
     });
-    client.execute_upgrade();
+    assert_eq!(
+        client.try_execute_upgrade(),
+        Err(Ok(ArenaError::TimelockNotExpired))
+    );
 }
 
 #[test]
-#[should_panic(expected = "timelock has not expired")]
-fn test_execute_exactly_at_boundary_panics() {
+fn test_execute_exactly_at_boundary_returns_error() {
     let (env, _admin, client) = setup_with_admin();
     let propose_time = env.ledger().timestamp();
     client.propose_upgrade(&dummy_hash(&env));
     env.ledger().with_mut(|l| {
         l.timestamp = propose_time + TIMELOCK - 1;
     });
-    client.execute_upgrade();
+    assert_eq!(
+        client.try_execute_upgrade(),
+        Err(Ok(ArenaError::TimelockNotExpired))
+    );
 }
 
 #[test]
-#[should_panic(expected = "no pending upgrade to cancel")]
-fn test_cancel_without_proposal_panics() {
+fn test_cancel_without_proposal_returns_error() {
     let (_env, _admin, client) = setup_with_admin();
-    client.cancel_upgrade();
+    assert_eq!(
+        client.try_cancel_upgrade(),
+        Err(Ok(ArenaError::NoPendingUpgrade))
+    );
 }
 
 #[test]
@@ -489,8 +497,7 @@ fn test_cancel_clears_pending_upgrade() {
 }
 
 #[test]
-#[should_panic(expected = "no pending upgrade")]
-fn test_execute_after_cancel_panics() {
+fn test_execute_after_cancel_returns_error() {
     let (env, _admin, client) = setup_with_admin();
     client.propose_upgrade(&dummy_hash(&env));
     client.cancel_upgrade();
@@ -498,16 +505,21 @@ fn test_execute_after_cancel_panics() {
     env.ledger().with_mut(|l| {
         l.timestamp += TIMELOCK + 1;
     });
-    client.execute_upgrade();
+    assert_eq!(
+        client.try_execute_upgrade(),
+        Err(Ok(ArenaError::NoPendingUpgrade))
+    );
 }
 
 #[test]
-#[should_panic(expected = "no pending upgrade to cancel")]
-fn test_double_cancel_panics() {
+fn test_double_cancel_returns_error() {
     let (env, _admin, client) = setup_with_admin();
     client.propose_upgrade(&dummy_hash(&env));
     client.cancel_upgrade();
-    client.cancel_upgrade();
+    assert_eq!(
+        client.try_cancel_upgrade(),
+        Err(Ok(ArenaError::NoPendingUpgrade))
+    );
 }
 
 #[test]
@@ -1168,16 +1180,16 @@ fn set_capacity_enforces_minimum_and_maximum_bounds() {
 
     assert_eq!(
         client.try_set_capacity(&0),
-        Err(Ok(ArenaError::InvalidAmount))
+        Err(Ok(ArenaError::InvalidCapacity))
     );
     assert_eq!(
         client.try_set_capacity(&1),
-        Err(Ok(ArenaError::InvalidAmount))
+        Err(Ok(ArenaError::InvalidCapacity))
     );
     assert!(client.try_set_capacity(&2).is_ok());
     assert_eq!(
         client.try_set_capacity(&(bounds::MAX_ARENA_PARTICIPANTS + 1)),
-        Err(Ok(ArenaError::InvalidAmount))
+        Err(Ok(ArenaError::InvalidCapacity))
     );
 }
 

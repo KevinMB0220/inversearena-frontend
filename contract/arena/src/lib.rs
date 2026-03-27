@@ -71,6 +71,9 @@ pub enum ArenaError {
     PlayerEliminated = 21,
     WrongRoundNumber = 22,
     NotEnoughPlayers = 23,
+    InvalidCapacity = 24,
+    NoPendingUpgrade = 25,
+    TimelockNotExpired = 26,
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -244,7 +247,7 @@ impl ArenaContract {
             .ok_or(ArenaError::NotInitialized)?;
         admin.require_auth();
         if !(bounds::MIN_ARENA_PARTICIPANTS..=bounds::MAX_ARENA_PARTICIPANTS).contains(&capacity) {
-            return Err(ArenaError::InvalidAmount);
+            return Err(ArenaError::InvalidCapacity);
         }
         env.storage().instance().set(&CAPACITY_KEY, &capacity);
         Ok(())
@@ -644,12 +647,12 @@ impl ArenaContract {
         })
     }
 
-    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), ArenaError> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN_KEY)
-            .expect("not initialized");
+            .ok_or(ArenaError::NotInitialized)?;
         admin.require_auth();
         let execute_after: u64 = env.ledger().timestamp() + TIMELOCK_PERIOD;
         env.storage()
@@ -660,48 +663,51 @@ impl ArenaContract {
             .set(&EXECUTE_AFTER_KEY, &execute_after);
         env.events()
             .publish((TOPIC_UPGRADE_PROPOSED,), (new_wasm_hash, execute_after));
+        Ok(())
     }
 
-    pub fn execute_upgrade(env: Env) {
+    pub fn execute_upgrade(env: Env) -> Result<(), ArenaError> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN_KEY)
-            .expect("not initialized");
+            .ok_or(ArenaError::NotInitialized)?;
         admin.require_auth();
         let execute_after: u64 = env
             .storage()
             .instance()
             .get(&EXECUTE_AFTER_KEY)
-            .expect("no pending upgrade");
+            .ok_or(ArenaError::NoPendingUpgrade)?;
         if env.ledger().timestamp() < execute_after {
-            panic!("timelock has not expired");
+            return Err(ArenaError::TimelockNotExpired);
         }
         let new_wasm_hash: BytesN<32> = env
             .storage()
             .instance()
             .get(&PENDING_HASH_KEY)
-            .expect("no pending upgrade");
+            .ok_or(ArenaError::NoPendingUpgrade)?;
         env.storage().instance().remove(&PENDING_HASH_KEY);
         env.storage().instance().remove(&EXECUTE_AFTER_KEY);
         env.events()
             .publish((TOPIC_UPGRADE_EXECUTED,), new_wasm_hash.clone());
         env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
     }
 
-    pub fn cancel_upgrade(env: Env) {
+    pub fn cancel_upgrade(env: Env) -> Result<(), ArenaError> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN_KEY)
-            .expect("not initialized");
+            .ok_or(ArenaError::NotInitialized)?;
         admin.require_auth();
         if !env.storage().instance().has(&PENDING_HASH_KEY) {
-            panic!("no pending upgrade to cancel");
+            return Err(ArenaError::NoPendingUpgrade);
         }
         env.storage().instance().remove(&PENDING_HASH_KEY);
         env.storage().instance().remove(&EXECUTE_AFTER_KEY);
         env.events().publish((TOPIC_UPGRADE_CANCELLED,), ());
+        Ok(())
     }
 
     pub fn pending_upgrade(env: Env) -> Option<(BytesN<32>, u64)> {
