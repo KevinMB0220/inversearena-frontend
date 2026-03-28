@@ -319,6 +319,8 @@ impl ArenaContract {
     pub fn join(env: Env, player: Address, amount: i128) -> Result<(), ArenaError> {
         player.require_auth();
         require_not_paused(&env)?;
+        // Ensure the arena has been configured before accepting deposits
+        let config = get_config(&env)?;
         if env
             .storage()
             .instance()
@@ -330,7 +332,7 @@ impl ArenaContract {
         if amount <= 0 {
             return Err(ArenaError::InvalidAmount);
         }
-        let required_stake_amount = get_config(&env)?.required_stake_amount;
+        let required_stake_amount = config.required_stake_amount;
         if amount != required_stake_amount {
             return Err(ArenaError::InvalidAmount);
         }

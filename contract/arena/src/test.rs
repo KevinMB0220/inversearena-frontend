@@ -1931,6 +1931,18 @@ fn join_fails_when_token_not_set() {
 }
 
 #[test]
+fn join_fails_before_init() {
+    let (env, _admin, client) = setup_with_admin();
+    let player = Address::generate(&env);
+
+    // We initialized admin, but NOT the game configuration (init()).
+    // join() must fail early because it can't know the required_stake_amount.
+
+    let err = client.try_join(&player, &100i128);
+    assert_eq!(err, Err(Ok(ArenaError::NotInitialized)));
+}
+
+#[test]
 fn join_succeeds_on_retry_after_capacity_was_cleared() {
     let (env, admin, client) = setup_with_admin();
     let (_token, token_id) = setup_token(&env, &admin);
