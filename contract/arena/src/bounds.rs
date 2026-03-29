@@ -35,3 +35,13 @@ pub const MAX_SPEED_LEDGERS: u32 = 100_000;
 /// Maximum `round_speed_in_ledgers` — 17 280 ledgers ≈ 1 day at mainnet ~5 s/ledger.
 #[cfg(not(test))]
 pub const MAX_SPEED_LEDGERS: u32 = 17_280;
+
+/// Minimum `required_stake_amount` accepted by `init`.
+/// Matches the factory's `DEFAULT_MIN_STAKE` (10 XLM in stroops) to prevent
+/// dust-stake arenas and enforce the same floor regardless of call path.
+/// Test value is relaxed to allow existing tests that use small amounts (e.g. 100 stroops).
+#[cfg(test)]
+pub const MIN_REQUIRED_STAKE: i128 = 1;
+/// Minimum `required_stake_amount` — 10_000_000 stroops = 10 XLM.
+#[cfg(not(test))]
+pub const MIN_REQUIRED_STAKE: i128 = 10_000_000;
